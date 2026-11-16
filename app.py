@@ -18,8 +18,8 @@ from models import (
     Agendamento, BairroCobertura, Notificacao, Pet, Servico, Usuario, db,
 )
 from services import (
-    RegraNegocioError, acoes_disponiveis, buscar_bairro, criar_agendamento,
-    executar_acao, horarios_disponiveis,
+    RegraNegocioError, acoes_disponiveis, agenda_do_dia, buscar_bairro,
+    criar_agendamento, executar_acao, horarios_disponiveis, resumo_do_dia,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -116,6 +116,7 @@ def create_app(config: dict | None = None) -> Flask:
     _registrar_rotas_publicas(app)
     _registrar_rotas_perfil_e_pets(app)
     _registrar_rotas_agendamento(app)
+    _registrar_rotas_prestador(app)
     return app
 
 
@@ -438,6 +439,33 @@ def _registrar_rotas_agendamento(app: Flask) -> None:
             {"lida": True})
         db.session.commit()
         return redirect(url_for("notificacoes"))
+
+
+FILTROS_MODALIDADE = {"movel": TIPO_MOVEL, "loja": TIPO_LOJA}
+
+
+def _registrar_rotas_prestador(app: Flask) -> None:
+    @app.get("/painel")
+    @prestador_required
+    def painel():
+        try:
+            dia = date.fromisoformat(request.args.get("data", ""))
+        except ValueError:
+            dia = date.today()
+        filtro = request.args.get("tipo")
+        if filtro not in FILTROS_MODALIDADE:
+            filtro = "todos"
+
+        agenda = agenda_do_dia(dia, FILTROS_MODALIDADE.get(filtro))
+        return render_template(
+            "painel.html", dia=dia, filtro=filtro, agenda=agenda,
+            resumo=resumo_do_dia(dia),
+            acoes={ag.id: acoes_disponiveis(ag, g.usuario) for ag in agenda},
+            hoje=date.today(), anterior=dia - timedelta(days=1),
+            seguinte=dia + timedelta(days=1),
+            # As ações devolvem o prestador para esta mesma visão filtrada.
+            aqui=f"/painel?data={dia.isoformat()}&tipo={filtro}",
+        )
 
 
 if __name__ == "__main__":

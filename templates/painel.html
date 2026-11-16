@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_status, badge_modalidade, icone_especie %}
+{% block title %}Painel da equipe{% endblock %}
+
+{% set dias_semana = ['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo'] %}
+{% set estilo_acao = {
+  'confirmar': 'btn-primario', 'recusar': 'btn-perigo', 'cancelar': 'btn-perigo',
+  'iniciar_deslocamento': 'btn-destaque', 'iniciar_atendimento': 'btn-destaque',
+  'concluir': 'btn-primario'} %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-10">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="titulo-pagina">Painel da equipe</h1>
+      <p class="mt-1 text-sm font-semibold text-stone-600">
+        {{ dias_semana[dia.weekday()]|capitalize }}, {{ dia.strftime('%d/%m/%Y') }}{{ ' · hoje' if dia == hoje }}
+      </p>
+    </div>
+    <a href="/gestao" class="btn-secundario">Gestão de cadastros</a>
+  </div>
+
+  {# --- Resumo do dia --- #}
+  <section class="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Resumo do dia">
+    {% for chave, rotulo, cor in [
+      ('total', 'Total de atendimentos', 'text-stone-900'),
+      ('pendentes', 'Pendentes de aprovação', 'text-amber-600'),
+      ('loja', 'Em loja física', 'text-orange-600'),
+      ('movel', 'Em unidade móvel', 'text-marca-700')] %}
+      <div class="cartao">
+        <p class="text-xs font-extrabold uppercase tracking-wide text-stone-500">{{ rotulo }}</p>
+        <p data-card="{{ chave }}" class="mt-1 text-4xl font-black {{ cor }}">{{ resumo[chave] }}</p>
+      </div>
+    {% endfor %}
+  </section>
+
+  {# --- Filtros --- #}
+  <section class="cartao mt-6 flex flex-wrap items-end justify-between gap-4" aria-label="Filtros da agenda">
+    <form method="get" action="/painel" class="flex flex-wrap items-end gap-3">
+      <div>
+        <label for="data" class="rotulo">Data</label>
+        <input id="data" name="data" type="date" value="{{ dia.isoformat() }}" class="campo" onchange="this.form.submit()">
+      </div>
+      <div>
+        <label for="tipo" class="rotulo">Modalidade</label>
+        <select id="tipo" name="tipo" class="campo" onchange="this.form.submit()">
+          <option value="todos" {{ 'selected' if filtro == 'todos' }}>Todos</option>
+          <option value="movel" {{ 'selected' if filtro == 'movel' }}>Unidade Móvel / Veículo</option>
+          <option value="loja" {{ 'selected' if filtro == 'loja' }}>Loja Física</option>
+        </select>
+      </div>
+      <button class="btn-secundario">Filtrar</button>
+    </form>
+    <div class="flex gap-2">
+      <a href="/painel?data={{ anterior.isoformat() }}&tipo={{ filtro }}" class="btn-secundario">← Dia anterior</a>
+      <a href="/painel?tipo={{ filtro }}" class="btn-secundario">Hoje</a>
+      <a href="/painel?data={{ seguinte.isoformat() }}&tipo={{ filtro }}" class="btn-secundario">Próximo dia →</a>
+    </div>
+  </section>
+
+  {# --- Agenda e roteiro do dia --- #}
+  <h2 class="mt-8 text-lg font-extrabold text-stone-900">Agenda e roteiro do dia</h2>
+  <div class="mt-4 space-y-4">
+    {% for ag in agenda %}
+      <article class="cartao grid gap-5 md:grid-cols-12">
+        <div class="md:col-span-2">
+          <p class="text-3xl font-black text-stone-900">{{ ag.data_hora.strftime('%H:%M') }}</p>
+          <p class="text-xs font-bold text-stone-500">#{{ ag.id }} · {{ ag.duracao_total }} min</p>
+          <div class="mt-2 flex flex-wrap gap-1.5 md:flex-col md:items-start">
+            {{ badge_status(ag.status) }}
+            {{ badge_modalidade(ag.tipo_atendimento) }}
+          </div>
+        </div>
+
+        <div class="space-y-3 text-sm md:col-span-7">
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <p class="text-xs font-extrabold uppercase tracking-wide text-stone-400">Pet</p>
+              <p class="font-extrabold text-stone-900">{{ icone_especie(ag.pet.especie) }} {{ ag.pet.nome }}</p>
+              <p class="text-stone-600">{{ ag.pet.especie }} · Porte {{ 'Médio' if ag.pet.porte == 'Medio' else ag.pet.porte }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-extrabold uppercase tracking-wide text-stone-400">Tutor</p>
+              <p class="font-extrabold text-stone-900">{{ ag.cliente.nome }}</p>
+              <p class="text-stone-600">{{ ag.cliente.telefone or 'Sem telefone' }}</p>
+            </div>
+          </div>
+
+          {% if ag.pet.restricoes_medicas %}
+            <p data-alerta-restricao role="alert" class="rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 font-bold text-rose-800">
+              ⚠️ Atenção — restrição do pet: {{ ag.pet.restricoes_medicas }}
+            </p>
+          {% endif %}
+
+          {% if ag.em_domicilio %}
+            <p class="rounded-xl bg-marca-50 px-3 py-2 text-marca-900">
+              <span class="font-extrabold">📍 Endereço:</span> {{ ag.endereco_atendimento }} — {{ ag.bairro_atendimento }}
+            </p>
+          {% endif %}
+
+          <p><span class="font-extrabold text-stone-700">Serviços:</span>
+            {% for item in ag.itens %}{{ item.servico.nome_servico }}{{ ', ' if not loop.last }}{% endfor %}
+          </p>
+
+          <p class="flex flex-wrap gap-x-5 gap-y-1 text-stone-600">
+            <span>Pagamento: <strong class="text-stone-900">{{ 'Cartão' if ag.forma_pagamento == 'Cartao' else ag.forma_pagamento }}</strong></span>
+            <span>Total: <strong class="text-stone-900">{{ ag.valor_total|brl }}</strong></span>
+            {% if ag.unidade_movel %}
+              <span>Recurso: <strong class="text-stone-900">{{ ag.unidade_movel.modelo }} ({{ ag.unidade_movel.placa }})</strong></span>
+            {% elif ag.posto_fixo %}
+              <span>Recurso: <strong class="text-stone-900">{{ ag.posto_fixo.identificacao_mesa }}</strong></span>
+            {% endif %}
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-2 md:col-span-3">
+          {% for acao, rotulo in acoes[ag.id] %}
+            <form method="post" action="/agendamentos/{{ ag.id }}/acao"
+                  {% if acao in ('recusar', 'cancelar') %}data-confirmar="{{ rotulo }} o agendamento #{{ ag.id }} de {{ ag.pet.nome }}?"{% endif %}>
+              {{ csrf_field() }}
+              <input type="hidden" name="acao" value="{{ acao }}">
+              <input type="hidden" name="next" value="{{ aqui }}">
+              <button class="{{ estilo_acao[acao] }} w-full">{{ rotulo }}</button>
+            </form>
+          {% else %}
+            <p class="rounded-xl bg-stone-100 px-3 py-2 text-center text-xs font-bold text-stone-500">Estado final — sem ações</p>
+          {% endfor %}
+        </div>
+      </article>
+    {% else %}
+      <div class="cartao text-center">
+        <p class="font-extrabold text-stone-900">Nenhum atendimento nesta data</p>
+        <p class="mt-1 text-sm text-stone-600">Use os botões acima para navegar entre os dias ou trocar a modalidade.</p>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
