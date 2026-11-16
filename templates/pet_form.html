@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar pet' if pet else 'Cadastrar pet' }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-xl px-4 py-10">
+  <a href="/pets" class="text-sm font-bold text-marca-700 hover:underline">← Meus pets</a>
+  <h1 class="titulo-pagina mt-2">{{ 'Editar ' ~ pet.nome if pet else 'Cadastrar pet' }}</h1>
+
+  <form method="post" class="cartao mt-6 grid gap-4 sm:grid-cols-2">
+    {{ csrf_field() }}
+    <div class="sm:col-span-2">
+      <label for="nome" class="rotulo">Nome do pet</label>
+      <input id="nome" name="nome" required value="{{ form.nome or '' }}" class="campo">
+    </div>
+
+    <fieldset>
+      <legend class="rotulo">Espécie</legend>
+      <div class="flex gap-2">
+        {% for especie in ['Cão', 'Gato'] %}
+          <label class="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm font-bold has-[:checked]:border-marca-500 has-[:checked]:bg-marca-50 has-[:checked]:text-marca-800">
+            <input type="radio" name="especie" value="{{ especie }}" required class="sr-only"
+                   {{ 'checked' if form.especie == especie }}>
+            <span aria-hidden="true">{{ '🐶' if especie == 'Cão' else '🐱' }}</span> {{ especie }}
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div>
+      <label for="porte" class="rotulo">Porte</label>
+      <select id="porte" name="porte" required class="campo">
+        <option value="" disabled {{ 'selected' if not form.porte }}>Selecione…</option>
+        {% for valor, rotulo in [('Pequeno', 'Pequeno — preço base'), ('Medio', 'Médio — +25%'), ('Grande', 'Grande — +50%')] %}
+          <option value="{{ valor }}" {{ 'selected' if form.porte == valor }}>{{ rotulo }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="sm:col-span-2">
+      <label for="restricoes_medicas" class="rotulo">Restrições médicas, alergias ou comportamento <span class="font-normal text-stone-500">(opcional)</span></label>
+      <textarea id="restricoes_medicas" name="restricoes_medicas" rows="3" class="campo"
+                placeholder="Ex.: alergia a shampoo perfumado, medo de secador…">{{ form.restricoes_medicas or '' }}</textarea>
+    </div>
+
+    <div class="flex gap-2 sm:col-span-2">
+      <button class="btn-primario flex-1 py-3">{{ 'Salvar alterações' if pet else 'Cadastrar pet' }}</button>
+      <a href="/pets" class="btn-secundario py-3">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

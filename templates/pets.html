@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icone_especie %}
+{% block title %}Meus pets{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-10">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="titulo-pagina">Meus pets</h1>
+      <p class="mt-1 text-sm text-stone-600">O porte define o preço dos serviços; as restrições ficam visíveis para a equipe.</p>
+    </div>
+    <a href="/pets/novo" class="btn-primario">+ Cadastrar pet</a>
+  </div>
+
+  {% if pets %}
+    <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {% for pet in pets %}
+        {% set n = concluidos.get(pet.id, 0) %}
+        <article class="cartao flex flex-col">
+          <div class="flex items-start gap-3">
+            <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-marca-50 text-2xl" aria-hidden="true">{{ icone_especie(pet.especie) }}</span>
+            <div>
+              <h2 class="text-lg font-extrabold text-stone-900">{{ pet.nome }}</h2>
+              <p class="text-sm text-stone-600">{{ pet.especie }} · Porte {{ 'Médio' if pet.porte == 'Medio' else pet.porte }}</p>
+            </div>
+          </div>
+
+          {% if pet.restricoes_medicas %}
+            <p class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+              <span aria-hidden="true">⚠️</span> {{ pet.restricoes_medicas }}
+            </p>
+          {% else %}
+            <p class="mt-4 text-sm text-stone-400">Sem restrições informadas.</p>
+          {% endif %}
+
+          <p class="mt-3 flex-1 text-sm text-stone-600">
+            {{ n }} atendimento{{ '' if n == 1 else 's' }} concluído{{ '' if n == 1 else 's' }}
+          </p>
+
+          <div class="mt-4 flex gap-2">
+            <a href="/pets/{{ pet.id }}/editar" class="btn-secundario flex-1">Editar</a>
+            <form method="post" action="/pets/{{ pet.id }}/excluir" data-confirmar="Excluir {{ pet.nome }}?">
+              {{ csrf_field() }}
+              <button class="btn-perigo">Excluir</button>
+            </form>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+    <p class="mt-8"><a href="/agendar" class="btn-destaque">Agendar um atendimento</a></p>
+  {% else %}
+    <div class="cartao mt-8 text-center">
+      <p class="text-4xl" aria-hidden="true">🐾</p>
+      <p class="mt-2 font-extrabold text-stone-900">Nenhum pet cadastrado ainda</p>
+      <p class="mt-1 text-sm text-stone-600">Cadastre o seu pet para poder agendar um atendimento.</p>
+      <a href="/pets/novo" class="btn-primario mt-4">Cadastrar meu primeiro pet</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

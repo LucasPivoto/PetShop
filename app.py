@@ -11,8 +11,8 @@ from markupsafe import Markup
 
 import seed
 from models import (
-    PERFIL_CLIENTE, PERFIL_PRESTADOR, TIPO_LOJA, TIPO_MOVEL, BairroCobertura,
-    Notificacao, Servico, Usuario, db,
+    CONCLUIDO, ESPECIES, PERFIL_CLIENTE, PERFIL_PRESTADOR, PORTES, TIPO_LOJA,
+    TIPO_MOVEL, Agendamento, BairroCobertura, Notificacao, Pet, Servico, Usuario, db,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -105,6 +105,7 @@ def create_app(config: dict | None = None) -> Flask:
     app.add_template_filter(datahora)
     _registrar_ganchos(app)
     _registrar_rotas_publicas(app)
+    _registrar_rotas_perfil_e_pets(app)
     return app
 
 
@@ -215,6 +216,104 @@ def _registrar_rotas_publicas(app: Flask) -> None:
         session.pop("usuario_id", None)
         flash("Você saiu da sua conta.", "info")
         return redirect(url_for("index"))
+
+
+def _pet_do_cliente(pet_id: int) -> Pet:
+    """Pet do usuário logado; o de outro tutor responde 404, como se não existisse."""
+    pet = db.session.get(Pet, pet_id)
+    if pet is None or pet.cliente_id != g.usuario.id:
+        abort(404)
+    return pet
+
+
+def _ler_pet_do_formulario() -> tuple[dict, str | None]:
+    form = {
+        "nome": request.form.get("nome", "").strip(),
+        "especie": request.form.get("especie", ""),
+        "porte": request.form.get("porte", ""),
+        "restricoes_medicas": request.form.get("restricoes_medicas", "").strip() or None,
+    }
+    erro = None
+    if not form["nome"]:
+        erro = "Informe o nome do pet."
+    elif form["especie"] not in ESPECIES:
+        erro = "Selecione a espécie: Cão ou Gato."
+    elif form["porte"] not in PORTES:
+        erro = "Selecione o porte do pet."
+    return form, erro
+
+
+def _registrar_rotas_perfil_e_pets(app: Flask) -> None:
+    @app.route("/perfil", methods=["GET", "POST"])
+    @cliente_required
+    def perfil():
+        if request.method == "POST":
+            nome = request.form.get("nome", "").strip()
+            if not nome:
+                flash("Informe o seu nome.", "erro")
+                return render_template("perfil.html"), 400
+            g.usuario.nome = nome
+            for campo in ("telefone", "endereco_completo", "bairro"):
+                setattr(g.usuario, campo, request.form.get(campo, "").strip())
+            db.session.commit()
+            flash("Perfil atualizado.", "sucesso")
+            return redirect(url_for("perfil"))
+        return render_template("perfil.html")
+
+    @app.get("/pets")
+    @cliente_required
+    def pets():
+        concluidos = dict(
+            db.session.query(Agendamento.pet_id, db.func.count(Agendamento.id))
+            .filter(Agendamento.cliente_id == g.usuario.id, Agendamento.status == CONCLUIDO)
+            .group_by(Agendamento.pet_id).all())
+        return render_template("pets.html", pets=g.usuario.pets, concluidos=concluidos)
+
+    @app.route("/pets/novo", methods=["GET", "POST"])
+    @cliente_required
+    def pet_novo():
+        form = {}
+        if request.method == "POST":
+            form, erro = _ler_pet_do_formulario()
+            if erro is None:
+                db.session.add(Pet(cliente_id=g.usuario.id, **form))
+                db.session.commit()
+                flash(f"{form['nome']} foi cadastrado.", "sucesso")
+                return redirect(url_for("pets"))
+            flash(erro, "erro")
+        return render_template("pet_form.html", pet=None, form=form), (400 if form else 200)
+
+    @app.route("/pets/<int:pet_id>/editar", methods=["GET", "POST"])
+    @cliente_required
+    def pet_editar(pet_id):
+        pet = _pet_do_cliente(pet_id)
+        form = {campo: getattr(pet, campo) for campo in
+                ("nome", "especie", "porte", "restricoes_medicas")}
+        status = 200
+        if request.method == "POST":
+            form, erro = _ler_pet_do_formulario()
+            if erro is None:
+                for campo, valor in form.items():
+                    setattr(pet, campo, valor)
+                db.session.commit()
+                flash(f"Dados de {pet.nome} atualizados.", "sucesso")
+                return redirect(url_for("pets"))
+            flash(erro, "erro")
+            status = 400
+        return render_template("pet_form.html", pet=pet, form=form), status
+
+    @app.post("/pets/<int:pet_id>/excluir")
+    @cliente_required
+    def pet_excluir(pet_id):
+        pet = _pet_do_cliente(pet_id)
+        if pet.agendamentos:
+            flash("Este pet possui agendamentos e não pode ser excluído.", "erro")
+        else:
+            nome = pet.nome
+            db.session.delete(pet)
+            db.session.commit()
+            flash(f"{nome} foi removido.", "info")
+        return redirect(url_for("pets"))
 
 
 if __name__ == "__main__":

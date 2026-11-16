@@ -33,3 +33,9 @@
     });
   });
 })();
+
+/* Formulários com data-confirmar pedem confirmação antes de enviar. */
+document.addEventListener('submit', function (evento) {
+  var mensagem = evento.target.dataset && evento.target.dataset.confirmar;
+  if (mensagem && !window.confirm(mensagem)) evento.preventDefault();
+});
