@@ -2,6 +2,7 @@ from datetime import date, datetime
 from types import SimpleNamespace
 
 import pytest
+from werkzeug.security import generate_password_hash
 
 from app import create_app
 from models import (
@@ -12,6 +13,9 @@ from models import (
 # Relógio fixo para os testes das regras de negócio.
 AGORA = datetime(2026, 3, 2, 7, 0)
 DIA = date(2026, 3, 3)
+
+# O hash é caro de propósito; calculado uma vez para toda a suíte.
+_HASH_123456 = generate_password_hash("123456")
 
 
 @pytest.fixture
@@ -35,7 +39,7 @@ def client(app):
 def _usuario(nome, email, perfil, bairro=None, endereco=None):
     u = Usuario(nome=nome, email=email, perfil=perfil, telefone="(35) 99999-0000",
                 bairro=bairro, endereco_completo=endereco)
-    u.set_senha("123456")
+    u.senha_hash = _HASH_123456
     db.session.add(u)
     return u
 
