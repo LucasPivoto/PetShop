@@ -3,6 +3,7 @@ import hmac
 import math
 import os
 import secrets
+import socket
 from datetime import date, datetime, timedelta
 from functools import wraps
 
@@ -631,5 +632,59 @@ def _registrar_rotas_gestao(app: Flask) -> None:
         return voltar(recurso)
 
 
+# --- Execução local (python app.py) ----------------------------------------
+
+HOST = "127.0.0.1"
+# A 5000 é a porta habitual do Flask, mas em muitas máquinas (sobretudo no
+# Windows) ela é reservada pelo sistema ou usada por outro serviço. Nesse caso
+# o servidor passa para a próxima da lista em vez de falhar ao iniciar.
+PORTAS_PADRAO = (5000, 8000, 8080, 5050)
+
+
+def portas_candidatas(ambiente) -> list[int]:
+    """Portas a tentar, em ordem; a variável PORT, se válida, vem primeiro."""
+    candidatas = list(PORTAS_PADRAO)
+    try:
+        preferida = int(ambiente.get("PORT", ""))
+    except ValueError:
+        preferida = 0
+    if 0 < preferida < 65536:
+        candidatas = [preferida] + [p for p in candidatas if p != preferida]
+    return candidatas
+
+
+def _porta_disponivel(host: str, porta: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sonda:
+        if os.name != "nt":
+            # Fora do Windows, permite reusar uma porta recém-liberada.
+            sonda.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sonda.bind((host, porta))
+        except OSError:  # em uso, ou proibida pelo sistema (WinError 10013)
+            return False
+    return True
+
+
+def escolher_porta(host: str, candidatas: list[int]) -> int:
+    """Primeira porta que o sistema deixa abrir; em último caso, uma livre qualquer."""
+    for porta in candidatas:
+        if _porta_disponivel(host, porta):
+            return porta
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sonda:
+        sonda.bind((host, 0))
+        return sonda.getsockname()[1]
+
+
+def main() -> None:
+    app = create_app()
+    candidatas = portas_candidatas(os.environ)
+    porta = escolher_porta(HOST, candidatas)
+    if porta != candidatas[0]:
+        print(f" * A porta {candidatas[0]} está bloqueada ou em uso neste computador; "
+              f"usando a porta {porta}.")
+    print(f" * PetMóvel Itajubá: abra http://{HOST}:{porta} no navegador")
+    app.run(host=HOST, port=porta, debug=os.environ.get("FLASK_DEBUG") == "1")
+
+
 if __name__ == "__main__":
-    create_app().run(debug=os.environ.get("FLASK_DEBUG") == "1")
+    main()

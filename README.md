@@ -43,7 +43,15 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Abra **http://127.0.0.1:5000** no navegador.
+Abra no navegador o endereço que aparece no terminal — normalmente
+**http://127.0.0.1:5000**.
+
+> **Porta 5000 bloqueada?** Em algumas máquinas, sobretudo no Windows, a porta 5000
+> é reservada pelo sistema ou usada por outro programa (erro "Foi feita uma tentativa
+> de acesso a um soquete de uma maneira que é proibida pelas permissões de acesso").
+> O sistema detecta isso sozinho e sobe na próxima porta livre (8000, 8080 ou 5050),
+> avisando no terminal qual endereço abrir. Para escolher a porta, defina a variável
+> `PORT` antes de rodar — por exemplo, no PowerShell: `$env:PORT = "8123"`.
 
 Na primeira execução o sistema cria o banco `petshop.db` e o popula sozinho com os
 dados de demonstração. É preciso conexão com a internet, porque o Tailwind CSS e a
