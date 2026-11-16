@@ -1,0 +1,22 @@
+{# Componentes reutilizados pelos templates. #}
+
+{% macro badge_status(status) %}
+  {% set cores = {
+    'Pendente': 'bg-amber-100 text-amber-800 ring-amber-200',
+    'Confirmado': 'bg-sky-100 text-sky-800 ring-sky-200',
+    'Em Deslocamento': 'bg-purple-100 text-purple-800 ring-purple-200',
+    'Em Atendimento': 'bg-indigo-100 text-indigo-800 ring-indigo-200',
+    'Concluído': 'bg-emerald-100 text-emerald-800 ring-emerald-200',
+    'Cancelado': 'bg-stone-200 text-stone-600 ring-stone-300'} %}
+  <span class="inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-extrabold ring-1 ring-inset {{ cores.get(status, cores['Cancelado']) }}">{{ status }}</span>
+{% endmacro %}
+
+{% macro badge_modalidade(tipo) %}
+  {% if tipo == 'DOMICILIO_MOVEL' %}
+    <span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-marca-50 px-2.5 py-1 text-xs font-extrabold text-marca-800 ring-1 ring-inset ring-marca-200">🚐 Domicílio</span>
+  {% else %}
+    <span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-orange-50 px-2.5 py-1 text-xs font-extrabold text-orange-800 ring-1 ring-inset ring-orange-200">🏪 Loja física</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro icone_especie(especie) %}{{ '🐱' if especie == 'Gato' else '🐶' }}{% endmacro %}

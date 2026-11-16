@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Entrar{% endblock %}
+
+{% block content %}
+<div class="mx-auto grid max-w-4xl gap-6 px-4 py-12 md:grid-cols-5">
+  <section class="cartao md:col-span-3">
+    <h1 class="titulo-pagina">Entrar</h1>
+    <p class="mt-1 text-sm text-stone-600">Acesse para agendar e acompanhar os seus atendimentos.</p>
+
+    <form method="post" class="mt-6 space-y-4">
+      {{ csrf_field() }}
+      <div>
+        <label for="email" class="rotulo">E-mail</label>
+        <input id="email" name="email" type="email" required autofocus autocomplete="email"
+               value="{{ email or '' }}" class="campo" placeholder="voce@exemplo.com">
+      </div>
+      <div>
+        <label for="senha" class="rotulo">Senha</label>
+        <input id="senha" name="senha" type="password" required autocomplete="current-password" class="campo">
+      </div>
+      <button class="btn-primario w-full py-3">Entrar</button>
+    </form>
+
+    <p class="mt-5 text-center text-sm text-stone-600">
+      Ainda não tem conta? <a href="/cadastro" class="font-extrabold text-marca-700 hover:underline">Cadastre-se</a>
+    </p>
+  </section>
+
+  <aside class="rounded-2xl border border-amber-200 bg-amber-50 p-5 md:col-span-2">
+    <h2 class="font-extrabold text-amber-900">Contas de demonstração</h2>
+    <p class="mt-1 text-sm text-amber-900/80">Senha de todas: <strong>123456</strong></p>
+    <dl class="mt-4 space-y-3 text-sm">
+      {% for perfil, email_demo in [('Equipe (prestador)', 'admin@petmovel.com'), ('Cliente — BPS', 'cliente@teste.com'), ('Cliente — Centro', 'maria@teste.com')] %}
+        <div>
+          <dt class="font-bold text-amber-900">{{ perfil }}</dt>
+          <dd>
+            <button type="button" data-preencher-login="{{ email_demo }}"
+                    class="font-mono text-amber-950 underline decoration-dotted hover:decoration-solid">{{ email_demo }}</button>
+          </dd>
+        </div>
+      {% endfor %}
+    </dl>
+    <p class="mt-4 text-xs text-amber-900/70">Clique em um e-mail para preencher o formulário.</p>
+  </aside>
+</div>
+{% endblock %}
