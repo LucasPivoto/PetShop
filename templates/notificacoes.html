@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Notificações{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-10">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="titulo-pagina">Notificações</h1>
+      <p class="mt-1 text-sm text-stone-600">Avisos enviados a cada mudança de status dos seus agendamentos.</p>
+    </div>
+    {% if nao_lidas %}
+      <form method="post" action="/notificacoes/ler">
+        {{ csrf_field() }}
+        <button class="btn-secundario">Marcar todas como lidas</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <ul class="mt-6 space-y-3">
+    {% for n in notificacoes %}
+      <li class="flex gap-3 rounded-2xl border p-4 {{ 'border-stone-200 bg-white' if n.lida else 'border-marca-200 bg-marca-50' }}">
+        <span class="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full {{ 'bg-stone-300' if n.lida else 'bg-marca-600' }}" aria-hidden="true"></span>
+        <div>
+          <p class="text-sm {{ 'text-stone-600' if n.lida else 'font-bold text-stone-900' }}">{{ n.mensagem }}</p>
+          <p class="mt-1 text-xs text-stone-500">{{ n.criada_em|datahora }}{{ '' if n.lida else ' · nova' }}</p>
+        </div>
+      </li>
+    {% else %}
+      <li class="cartao text-center text-sm text-stone-600">Você ainda não tem notificações.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

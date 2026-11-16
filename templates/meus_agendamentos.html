@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge_status, badge_modalidade, icone_especie %}
+{% block title %}Meus agendamentos{% endblock %}
+
+{% macro cartao(ag, acoes_do_item=[]) %}
+  <article class="cartao">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="flex items-start gap-3">
+        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-marca-50 text-xl" aria-hidden="true">{{ icone_especie(ag.pet.especie) }}</span>
+        <div>
+          <h3 class="font-extrabold text-stone-900">{{ ag.pet.nome }} <span class="text-sm font-semibold text-stone-400">· #{{ ag.id }}</span></h3>
+          <p class="text-sm font-bold text-stone-700">{{ ag.data_hora|datahora }}</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        {{ badge_modalidade(ag.tipo_atendimento) }}
+        {{ badge_status(ag.status) }}
+      </div>
+    </div>
+
+    <ul class="mt-4 space-y-1 text-sm">
+      {% for item in ag.itens %}
+        <li class="flex justify-between gap-3">
+          <span class="text-stone-700">{{ item.servico.nome_servico }}</span>
+          <span class="font-bold text-stone-900">{{ item.preco_aplicado|brl }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+
+    <dl class="mt-4 grid gap-x-6 gap-y-1 border-t border-stone-200 pt-4 text-sm sm:grid-cols-2">
+      {% if ag.em_domicilio %}
+        <div class="sm:col-span-2"><dt class="inline text-stone-500">Endereço: </dt><dd class="inline font-semibold">{{ ag.endereco_atendimento }} — {{ ag.bairro_atendimento }}</dd></div>
+      {% endif %}
+      {% if ag.unidade_movel %}
+        <div><dt class="inline text-stone-500">Unidade móvel: </dt><dd class="inline font-semibold">{{ ag.unidade_movel.modelo }} ({{ ag.unidade_movel.profissional_responsavel }})</dd></div>
+      {% elif ag.posto_fixo %}
+        <div><dt class="inline text-stone-500">Local: </dt><dd class="inline font-semibold">{{ ag.posto_fixo.identificacao_mesa }}</dd></div>
+      {% endif %}
+      <div><dt class="inline text-stone-500">Pagamento na entrega: </dt><dd class="inline font-semibold">{{ 'Cartão' if ag.forma_pagamento == 'Cartao' else ag.forma_pagamento }}</dd></div>
+      <div><dt class="inline text-stone-500">Duração estimada: </dt><dd class="inline font-semibold">{{ ag.duracao_total }} min</dd></div>
+    </dl>
+
+    <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 pt-4">
+      <p class="text-sm text-stone-500">Total <span class="ml-1 text-xl font-black text-marca-700">{{ ag.valor_total|brl }}</span></p>
+      {% for acao, rotulo in acoes_do_item %}
+        <form method="post" action="/agendamentos/{{ ag.id }}/acao"
+              data-confirmar="Cancelar o agendamento de {{ ag.pet.nome }} em {{ ag.data_hora|datahora }}?">
+          {{ csrf_field() }}
+          <input type="hidden" name="acao" value="{{ acao }}">
+          <button class="btn-perigo">{{ rotulo }} agendamento</button>
+        </form>
+      {% endfor %}
+    </div>
+  </article>
+{% endmacro %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4 py-10">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="titulo-pagina">Meus agendamentos</h1>
+    <a href="/agendar" class="btn-primario">+ Novo agendamento</a>
+  </div>
+
+  <div data-abas role="tablist" class="mt-6 inline-flex gap-1 rounded-xl bg-stone-200/70 p-1">
+    <button type="button" role="tab" data-aba="ativos" class="rounded-lg px-4 py-2 text-sm font-extrabold">
+      Agendamentos Ativos <span class="ml-1 rounded-full bg-marca-600 px-2 py-0.5 text-xs text-white">{{ ativos|length }}</span>
+    </button>
+    <button type="button" role="tab" data-aba="historico" class="rounded-lg px-4 py-2 text-sm font-extrabold">
+      Histórico de Atendimentos <span class="ml-1 rounded-full bg-stone-400 px-2 py-0.5 text-xs text-white">{{ historico|length }}</span>
+    </button>
+  </div>
+
+  <section data-painel="ativos" role="tabpanel" class="mt-6 space-y-4">
+    {% for ag in ativos %}
+      {{ cartao(ag, acoes.get(ag.id, [])) }}
+    {% else %}
+      <div class="cartao text-center">
+        <p class="font-extrabold text-stone-900">Nenhum agendamento ativo</p>
+        <p class="mt-1 text-sm text-stone-600">Que tal marcar um banho para o seu pet?</p>
+        <a href="/agendar" class="btn-primario mt-4">Agendar agora</a>
+      </div>
+    {% endfor %}
+  </section>
+
+  <section data-painel="historico" role="tabpanel" class="mt-6 hidden space-y-4">
+    {% for ag in historico %}
+      {{ cartao(ag) }}
+    {% else %}
+      <div class="cartao text-center">
+        <p class="font-extrabold text-stone-900">Nenhum atendimento no histórico</p>
+        <p class="mt-1 text-sm text-stone-600">Atendimentos concluídos ou cancelados aparecem aqui.</p>
+      </div>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

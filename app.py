@@ -2,17 +2,24 @@
 import hmac
 import os
 import secrets
+from datetime import date, datetime, timedelta
 from functools import wraps
 
 from flask import (
-    Flask, abort, flash, g, redirect, render_template, request, session, url_for,
+    Flask, abort, flash, g, jsonify, redirect, render_template, request, session,
+    url_for,
 )
 from markupsafe import Markup
 
 import seed
 from models import (
-    CONCLUIDO, ESPECIES, PERFIL_CLIENTE, PERFIL_PRESTADOR, PORTES, TIPO_LOJA,
-    TIPO_MOVEL, Agendamento, BairroCobertura, Notificacao, Pet, Servico, Usuario, db,
+    CONCLUIDO, ESPECIES, FORMAS_PAGAMENTO, MULTIPLICADORES, PERFIL_CLIENTE,
+    PERFIL_PRESTADOR, PORTES, STATUS_ATIVOS, TIPO_LOJA, TIPO_MOVEL, TIPOS,
+    Agendamento, BairroCobertura, Notificacao, Pet, Servico, Usuario, db,
+)
+from services import (
+    RegraNegocioError, acoes_disponiveis, buscar_bairro, criar_agendamento,
+    executar_acao, horarios_disponiveis,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -45,7 +52,9 @@ def login_required(view):
     def protegida(*args, **kwargs):
         if g.usuario is None:
             flash("Entre ou cadastre-se para continuar.", "info")
-            return redirect(url_for("login", next=request.full_path.rstrip("?")))
+            # Só páginas (GET) são retomadas após o login; um POST não é repetido.
+            destino = request.full_path.rstrip("?") if request.method == "GET" else None
+            return redirect(url_for("login", next=destino))
         return view(*args, **kwargs)
     return protegida
 
@@ -106,6 +115,7 @@ def create_app(config: dict | None = None) -> Flask:
     _registrar_ganchos(app)
     _registrar_rotas_publicas(app)
     _registrar_rotas_perfil_e_pets(app)
+    _registrar_rotas_agendamento(app)
     return app
 
 
@@ -314,6 +324,120 @@ def _registrar_rotas_perfil_e_pets(app: Flask) -> None:
             db.session.commit()
             flash(f"{nome} foi removido.", "info")
         return redirect(url_for("pets"))
+
+
+def _contexto_agendar(form: dict) -> dict:
+    """Dados da tela de agendamento, inclusive o JSON usado pelo JavaScript."""
+    servicos = Servico.query.order_by(Servico.id).all()
+    bairros = BairroCobertura.query.order_by(BairroCobertura.nome_bairro).all()
+    dados = {
+        "pets": [{"id": p.id, "nome": p.nome, "especie": p.especie, "porte": p.porte}
+                 for p in g.usuario.pets],
+        "servicos": [{"id": s.id, "nome": s.nome_servico, "preco_base": s.preco_base,
+                      "duracao": s.duracao_minutos} for s in servicos],
+        "multiplicadores": MULTIPLICADORES,
+        "bairros": [{"nome": b.nome_bairro, "ativo": b.ativo} for b in bairros],
+        "tipoMovel": TIPO_MOVEL,
+        "tipoLoja": TIPO_LOJA,
+    }
+    return dict(pets=g.usuario.pets, servicos=servicos, bairros=bairros, dados=dados,
+                form=form, formas=FORMAS_PAGAMENTO, hoje=date.today().isoformat())
+
+
+def _registrar_rotas_agendamento(app: Flask) -> None:
+    @app.route("/agendar", methods=["GET", "POST"])
+    @cliente_required
+    def agendar():
+        if request.method == "GET":
+            if not g.usuario.pets:
+                flash("Cadastre um pet antes de agendar.", "info")
+                return redirect(url_for("pet_novo"))
+            bairro = buscar_bairro(g.usuario.bairro)
+            form = {
+                "pet_id": str(g.usuario.pets[0].id), "servicos": [], "tipo": TIPO_LOJA,
+                "data": (date.today() + timedelta(days=1)).isoformat(), "hora": "",
+                "bairro": bairro.nome_bairro if bairro else "",
+                "endereco": g.usuario.endereco_completo or "", "forma_pagamento": "",
+            }
+            return render_template("agendar.html", **_contexto_agendar(form))
+
+        form = {campo: request.form.get(campo, "").strip() for campo in
+                ("pet_id", "tipo", "data", "hora", "bairro", "endereco", "forma_pagamento")}
+        form["servicos"] = request.form.getlist("servicos")
+        try:
+            try:
+                data_hora = datetime.strptime(f"{form['data']} {form['hora']}",
+                                              "%Y-%m-%d %H:%M")
+            except ValueError:
+                raise RegraNegocioError("Data ou horário inválido.") from None
+            # O valor total é sempre recalculado no servidor; o do formulário é ignorado.
+            ag = criar_agendamento(
+                g.usuario, form["pet_id"], form["servicos"], form["tipo"], data_hora,
+                form["forma_pagamento"], bairro=form["bairro"], endereco=form["endereco"])
+        except RegraNegocioError as erro:
+            db.session.rollback()
+            flash(str(erro), "erro")
+            return render_template("agendar.html", **_contexto_agendar(form)), 400
+
+        flash(f"Agendamento #{ag.id} solicitado! Aguarde a confirmação da equipe.", "sucesso")
+        return redirect(url_for("meus_agendamentos"))
+
+    @app.get("/api/horarios")
+    def api_horarios():
+        if g.usuario is None:
+            return jsonify(erro="Faça login para consultar os horários."), 401
+        tipo = request.args.get("tipo", "")
+        try:
+            dia = date.fromisoformat(request.args.get("data", ""))
+        except ValueError:
+            return jsonify(erro="Data inválida."), 400
+        if tipo not in TIPOS:
+            return jsonify(erro="Modalidade inválida."), 400
+        return jsonify(horarios=horarios_disponiveis(tipo, dia))
+
+    @app.get("/meus-agendamentos")
+    @cliente_required
+    def meus_agendamentos():
+        todos = Agendamento.query.filter_by(cliente_id=g.usuario.id).all()
+        ativos = sorted((a for a in todos if a.status in STATUS_ATIVOS),
+                        key=lambda a: a.data_hora)
+        historico = sorted((a for a in todos if a.status not in STATUS_ATIVOS),
+                           key=lambda a: a.data_hora, reverse=True)
+        acoes = {a.id: acoes_disponiveis(a, g.usuario) for a in ativos}
+        return render_template("meus_agendamentos.html", ativos=ativos,
+                               historico=historico, acoes=acoes)
+
+    @app.post("/agendamentos/<int:ag_id>/acao")
+    @login_required
+    def agendamento_acao(ag_id):
+        ag = db.session.get(Agendamento, ag_id)
+        # Para um cliente, o agendamento de outro tutor "não existe".
+        if ag is None or not (g.usuario.eh_prestador or ag.cliente_id == g.usuario.id):
+            abort(404)
+        try:
+            executar_acao(ag, request.form.get("acao", ""), g.usuario)
+            flash(f"Agendamento #{ag.id} de {ag.pet.nome}: status atualizado para "
+                  f"{ag.status}.", "sucesso")
+        except RegraNegocioError as erro:
+            db.session.rollback()
+            flash(str(erro), "erro")
+        return redirect(destino_seguro(request.form.get("next"))
+                        or pagina_inicial_do(g.usuario))
+
+    @app.get("/notificacoes")
+    @login_required
+    def notificacoes():
+        lista = (Notificacao.query.filter_by(usuario_id=g.usuario.id)
+                 .order_by(Notificacao.criada_em.desc(), Notificacao.id.desc()).all())
+        return render_template("notificacoes.html", notificacoes=lista)
+
+    @app.post("/notificacoes/ler")
+    @login_required
+    def notificacoes_ler():
+        Notificacao.query.filter_by(usuario_id=g.usuario.id, lida=False).update(
+            {"lida": True})
+        db.session.commit()
+        return redirect(url_for("notificacoes"))
 
 
 if __name__ == "__main__":
