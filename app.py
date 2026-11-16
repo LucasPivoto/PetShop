@@ -1,5 +1,6 @@
 """PetMóvel Itajubá — aplicação Flask (rotas, autenticação e inicialização)."""
 import hmac
+import math
 import os
 import secrets
 from datetime import date, datetime, timedelta
@@ -15,7 +16,8 @@ import seed
 from models import (
     CONCLUIDO, ESPECIES, FORMAS_PAGAMENTO, MULTIPLICADORES, PERFIL_CLIENTE,
     PERFIL_PRESTADOR, PORTES, STATUS_ATIVOS, TIPO_LOJA, TIPO_MOVEL, TIPOS,
-    Agendamento, BairroCobertura, Notificacao, Pet, Servico, Usuario, db,
+    Agendamento, AgendamentoServico, BairroCobertura, Notificacao, Pet, PostoFixo,
+    Servico, UnidadeMovel, Usuario, db,
 )
 from services import (
     RegraNegocioError, acoes_disponiveis, agenda_do_dia, buscar_bairro,
@@ -117,6 +119,7 @@ def create_app(config: dict | None = None) -> Flask:
     _registrar_rotas_perfil_e_pets(app)
     _registrar_rotas_agendamento(app)
     _registrar_rotas_prestador(app)
+    _registrar_rotas_gestao(app)
     return app
 
 
@@ -466,6 +469,166 @@ def _registrar_rotas_prestador(app: Flask) -> None:
             # As ações devolvem o prestador para esta mesma visão filtrada.
             aqui=f"/painel?data={dia.isoformat()}&tipo={filtro}",
         )
+
+
+# --- Gestão básica (CRUD auxiliar) -----------------------------------------
+
+def _texto(valor: str) -> str:
+    valor = valor.strip()
+    if not valor:
+        raise ValueError("preencha todos os campos")
+    return valor
+
+
+def _preco(valor: str) -> float:
+    try:
+        numero = float(valor.strip().replace(",", "."))
+    except ValueError:
+        raise ValueError("o preço deve ser um número, como 45,50") from None
+    if not math.isfinite(numero) or numero <= 0:
+        raise ValueError("o preço deve ser maior que zero")
+    return round(numero, 2)
+
+
+def _minutos(valor: str) -> int:
+    try:
+        numero = int(valor.strip())
+    except ValueError:
+        raise ValueError("a duração deve ser um número inteiro de minutos") from None
+    if numero <= 0:
+        raise ValueError("a duração deve ser maior que zero")
+    return numero
+
+
+# Cada recurso da gestão: modelo, campos (nome, rótulo, validador) e como saber
+# se o registro já foi usado em agendamentos (o que impede a exclusão).
+GESTAO = {
+    "servicos": {
+        "titulo": "Serviços", "singular": "serviço", "modelo": Servico,
+        "campos": (("nome_servico", "Nome", _texto), ("descricao", "Descrição", _texto),
+                   ("preco_base", "Preço base (R$)", _preco),
+                   ("duracao_minutos", "Duração (min)", _minutos)),
+        "em_uso": lambda r: AgendamentoServico.query.filter_by(servico_id=r.id).count(),
+    },
+    "bairros": {
+        "titulo": "Bairros de Cobertura", "singular": "bairro", "modelo": BairroCobertura,
+        "campos": (("nome_bairro", "Bairro de Itajubá", _texto),),
+        "em_uso": lambda r: 0,
+    },
+    "unidades": {
+        "titulo": "Unidades Móveis", "singular": "unidade móvel", "modelo": UnidadeMovel,
+        "campos": (("modelo", "Modelo", _texto), ("placa", "Placa", _texto),
+                   ("profissional_responsavel", "Profissional responsável", _texto)),
+        "em_uso": lambda r: Agendamento.query.filter_by(unidade_movel_id=r.id).count(),
+    },
+    "postos": {
+        "titulo": "Postos Fixos", "singular": "posto fixo", "modelo": PostoFixo,
+        "campos": (("identificacao_mesa", "Identificação da baia/mesa", _texto),
+                   ("responsavel_setor", "Responsável pelo setor", _texto)),
+        "em_uso": lambda r: Agendamento.query.filter_by(posto_fixo_id=r.id).count(),
+    },
+}
+
+
+def _gestao_config(recurso: str) -> dict:
+    if recurso not in GESTAO:
+        abort(404)
+    return GESTAO[recurso]
+
+
+def _gestao_registro(config: dict, registro_id: int):
+    registro = db.session.get(config["modelo"], registro_id)
+    if registro is None:
+        abort(404)
+    return registro
+
+
+def _gestao_ler_formulario(recurso: str, config: dict, atual=None) -> dict:
+    """Valida os campos do formulário; levanta ValueError com o motivo."""
+    valores = {nome: validar(request.form.get(nome, ""))
+               for nome, _rotulo, validar in config["campos"]}
+    if recurso == "bairros":
+        existente = buscar_bairro(valores["nome_bairro"])
+        if existente is not None and existente is not atual:
+            raise ValueError(f"o bairro {existente.nome_bairro} já existe")
+    return valores
+
+
+def _registrar_rotas_gestao(app: Flask) -> None:
+    def voltar(recurso):
+        return redirect(url_for("gestao", aba=recurso))
+
+    @app.get("/gestao")
+    @prestador_required
+    def gestao():
+        aba = request.args.get("aba")
+        if aba not in GESTAO:
+            aba = "servicos"
+        config = GESTAO[aba]
+        modelo = config["modelo"]
+        return render_template(
+            "gestao.html", aba=aba, abas=GESTAO, config=config,
+            registros=modelo.query.order_by(modelo.id).all(),
+            tem_ativo=hasattr(modelo, "ativo"),
+        )
+
+    @app.post("/gestao/<recurso>/novo")
+    @prestador_required
+    def gestao_novo(recurso):
+        config = _gestao_config(recurso)
+        try:
+            valores = _gestao_ler_formulario(recurso, config)
+        except ValueError as erro:
+            flash(f"Não foi possível cadastrar: {erro}.", "erro")
+            return voltar(recurso)
+        db.session.add(config["modelo"](**valores))
+        db.session.commit()
+        flash(f"Novo {config['singular']} cadastrado.", "sucesso")
+        return voltar(recurso)
+
+    @app.post("/gestao/<recurso>/<int:registro_id>/editar")
+    @prestador_required
+    def gestao_editar(recurso, registro_id):
+        config = _gestao_config(recurso)
+        registro = _gestao_registro(config, registro_id)
+        try:
+            valores = _gestao_ler_formulario(recurso, config, atual=registro)
+        except ValueError as erro:
+            flash(f"Não foi possível salvar: {erro}.", "erro")
+            return voltar(recurso)
+        for campo, valor in valores.items():
+            setattr(registro, campo, valor)
+        db.session.commit()
+        flash("Alterações salvas.", "sucesso")
+        return voltar(recurso)
+
+    @app.post("/gestao/<recurso>/<int:registro_id>/alternar")
+    @prestador_required
+    def gestao_alternar(recurso, registro_id):
+        config = _gestao_config(recurso)
+        if not hasattr(config["modelo"], "ativo"):
+            abort(404)
+        registro = _gestao_registro(config, registro_id)
+        registro.ativo = not registro.ativo
+        db.session.commit()
+        estado = "ativado" if registro.ativo else "desativado"
+        flash(f"{config['singular'].capitalize()} {estado}.", "sucesso")
+        return voltar(recurso)
+
+    @app.post("/gestao/<recurso>/<int:registro_id>/excluir")
+    @prestador_required
+    def gestao_excluir(recurso, registro_id):
+        config = _gestao_config(recurso)
+        registro = _gestao_registro(config, registro_id)
+        if config["em_uso"](registro):
+            dica = " Desative-o em vez de excluir." if hasattr(registro, "ativo") else ""
+            flash(f"Este {config['singular']} já foi usado em agendamentos e não pode "
+                  f"ser excluído.{dica}", "erro")
+            return voltar(recurso)
+        db.session.delete(registro)
+        db.session.commit()
+        flash(f"{config['singular'].capitalize()} excluído.", "info")
+        return voltar(recurso)
 
 
 if __name__ == "__main__":
