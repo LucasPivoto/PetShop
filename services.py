@@ -14,6 +14,7 @@ from models import (
 )
 
 JANELA = timedelta(hours=1)
+ANTECEDENCIA_MAXIMA = timedelta(days=365)
 
 
 class RegraNegocioError(Exception):
@@ -25,7 +26,11 @@ class RegraNegocioError(Exception):
 def calcular_preco(preco_base: float, porte: str) -> float:
     if porte not in MULTIPLICADORES:
         raise RegraNegocioError("Porte do pet inválido.")
-    return round(preco_base * MULTIPLICADORES[porte], 2)
+    # Conta em centavos inteiros, com meio centavo arredondado para cima: é exata
+    # e dá o mesmo resultado que o JavaScript da tela (precoPorPorte em app.js).
+    centavos = round(preco_base * 100)
+    percentual = round(MULTIPLICADORES[porte] * 100)
+    return (centavos * percentual + 50) // 100 / 100
 
 
 def calcular_total(servicos: list[Servico], porte: str) -> float:
@@ -101,10 +106,12 @@ def _rotulo_agendamento(ag: Agendamento) -> str:
 # --- Criação de agendamento ------------------------------------------------
 
 def _para_int(valor):
+    """Id vindo de formulário: inteiro positivo que cabe no banco, ou None."""
     try:
-        return int(valor)
+        numero = int(valor)
     except (TypeError, ValueError):
         return None
+    return numero if 0 < numero < 2**63 else None
 
 
 def criar_agendamento(cliente: Usuario, pet_id, servico_ids: list, tipo: str,
@@ -134,6 +141,8 @@ def criar_agendamento(cliente: Usuario, pet_id, servico_ids: list, tipo: str,
         raise RegraNegocioError("Escolha um horário cheio entre 08:00 e 17:00.")
     if data_hora <= agora:
         raise RegraNegocioError("Escolha uma data e um horário futuros.")
+    if data_hora.date() > agora.date() + ANTECEDENCIA_MAXIMA:
+        raise RegraNegocioError("Agende com no máximo um ano de antecedência.")
 
     bairro_nome = endereco_final = None
     if tipo == TIPO_MOVEL:

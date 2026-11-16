@@ -35,6 +35,39 @@ def test_calcular_preco(base, porte, esperado):
     assert calcular_preco(base, porte) == esperado
 
 
+@pytest.mark.parametrize("base,porte,esperado", [
+    (44.90, "Medio", 56.13), (34.90, "Medio", 43.63), (54.90, "Medio", 68.63),
+    (12.50, "Medio", 15.63), (0.01, "Grande", 0.02), (0.01, "Medio", 0.01),
+    (33.33, "Grande", 50.0), (19.99, "Medio", 24.99),
+])
+def test_meio_centavo_arredonda_para_cima(base, porte, esperado):
+    # 44,90 × 1,25 = 56,125: o cliente vê 56,13 na tela e o servidor grava o mesmo.
+    assert calcular_preco(base, porte) == esperado
+
+
+def test_navegador_e_servidor_calculam_o_mesmo_preco():
+    """Roda a função de preço do app.js no Node e compara com o servidor."""
+    import json
+    import pathlib
+    import re
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js não instalado; comparação com o JavaScript não executada")
+    fonte = (pathlib.Path(__file__).parent.parent / "static" / "app.js").read_text("utf-8")
+    funcao = re.search(r"function precoPorPorte\(.*?\n}", fonte, re.S).group(0)
+    precos = [round(c / 100, 2) for c in range(1, 20001, 7)] + [44.9, 34.9, 54.9, 12.5]
+    script = (funcao + ";const ps=" + json.dumps(precos) + ";"
+              "console.log(JSON.stringify(ps.map(p=>[1,1.25,1.5].map(m=>precoPorPorte(p,m)))))")
+    saida = subprocess.run([node, "-e", script], capture_output=True, text=True, check=True)
+    do_navegador = json.loads(saida.stdout)
+    do_servidor = [[calcular_preco(p, porte) for porte in ("Pequeno", "Medio", "Grande")]
+                   for p in precos]
+    assert do_navegador == do_servidor
+
+
 def test_porte_invalido_levanta():
     with pytest.raises(RegraNegocioError):
         calcular_preco(50, "Gigante")

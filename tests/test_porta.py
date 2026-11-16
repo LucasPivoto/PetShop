@@ -4,7 +4,7 @@ import socket
 
 import pytest
 
-from app import HOST, PORTAS_PADRAO, escolher_porta, portas_candidatas
+from app import HOST, PORTAS_PADRAO, escolher_porta, porta_do_servidor, portas_candidatas
 
 
 @pytest.fixture
@@ -60,3 +60,18 @@ def test_variavel_port_tem_prioridade():
 @pytest.mark.parametrize("valor", ["", "abc", "0", "-1", "70000", "80.5"])
 def test_variavel_port_invalida_e_ignorada(valor):
     assert portas_candidatas({"PORT": valor}) == list(PORTAS_PADRAO)
+
+
+def test_porta_escolhida_fica_registrada_no_ambiente():
+    livre = _porta_livre()
+    ambiente = {"PORT": str(livre)}
+    assert porta_do_servidor(ambiente) == livre
+    assert ambiente["PETMOVEL_PORTA"] == str(livre)
+
+
+def test_processo_filho_do_recarregador_reusa_a_porta_do_pai(porta_ocupada):
+    # Com FLASK_DEBUG=1 o Flask reexecuta o programa num processo filho enquanto o
+    # pai já segura a porta. O filho não pode concluir que ela está "bloqueada".
+    ambiente = {"WERKZEUG_RUN_MAIN": "true", "PETMOVEL_PORTA": str(porta_ocupada),
+                "PORT": str(porta_ocupada)}
+    assert porta_do_servidor(ambiente) == porta_ocupada

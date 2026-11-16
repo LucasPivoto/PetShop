@@ -62,6 +62,14 @@ document.querySelectorAll('[data-abas]').forEach(function (grupo) {
   ativar(botoes[0].dataset.aba);
 });
 
+/* Preço de um serviço para um porte, em reais. Mesma conta do servidor
+   (services.calcular_preco): centavos inteiros, meio centavo para cima. */
+function precoPorPorte(precoBase, multiplicador) {
+  var centavos = Math.round(precoBase * 100);
+  var percentual = Math.round(multiplicador * 100);
+  return Math.floor((centavos * percentual + 50) / 100) / 100;
+}
+
 /* Formulário reativo de agendamento. `dados` vem do servidor (ver agendar.html). */
 window.initAgendar = function (dados) {
   'use strict';
@@ -86,9 +94,8 @@ window.initAgendar = function (dados) {
     var marcado = radiosTipo.find(function (r) { return r.checked; });
     return marcado ? marcado.value : '';
   }
-  // Mesmo cálculo do servidor: preço base × multiplicador do porte, 2 casas.
   function precoDe(servico, porte) {
-    return Math.round(servico.preco_base * dados.multiplicadores[porte] * 100) / 100;
+    return precoPorPorte(servico.preco_base, dados.multiplicadores[porte]);
   }
   function bairroInativo() {
     var bairro = dados.bairros.find(function (b) { return b.nome === selectBairro.value; });

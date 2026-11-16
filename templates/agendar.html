@@ -116,7 +116,7 @@
         <div class="grid gap-4 sm:grid-cols-3">
           <div>
             <label for="data" class="rotulo">Data</label>
-            <input id="data" name="data" type="date" required min="{{ hoje }}" value="{{ form.data }}" class="campo">
+            <input id="data" name="data" type="date" required min="{{ hoje }}" max="{{ limite }}" value="{{ form.data }}" class="campo">
           </div>
           <div class="sm:col-span-2">
             <p class="rotulo">Horário</p>

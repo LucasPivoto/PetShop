@@ -12,6 +12,7 @@ from flask import (
     url_for,
 )
 from markupsafe import Markup
+from werkzeug.routing import IntegerConverter
 
 import seed
 from models import (
@@ -21,7 +22,7 @@ from models import (
     Servico, UnidadeMovel, Usuario, db,
 )
 from services import (
-    RegraNegocioError, acoes_disponiveis, agenda_do_dia, buscar_bairro,
+    ANTECEDENCIA_MAXIMA, RegraNegocioError, acoes_disponiveis, agenda_do_dia, buscar_bairro,
     criar_agendamento, executar_acao, horarios_disponiveis, resumo_do_dia,
 )
 
@@ -45,9 +46,13 @@ DEPOIMENTOS = (
 
 def destino_seguro(alvo: str | None) -> str | None:
     """Aceita só caminhos locais, para o `next` nunca levar a outro site."""
-    if alvo and alvo.startswith("/") and not alvo.startswith("//") and "\\" not in alvo:
-        return alvo
-    return None
+    if not alvo or not alvo.startswith("/") or alvo.startswith("//") or "\\" in alvo:
+        return None
+    # Tab, quebra de linha e afins são descartados pelos navegadores ao seguir o
+    # redirecionamento ("/\t/site" viraria "//site"), então nenhum é aceito.
+    if any(c.isspace() or ord(c) < 0x20 or ord(c) == 0x7F for c in alvo):
+        return None
+    return alvo
 
 
 def login_required(view):
@@ -94,6 +99,13 @@ def datahora(valor) -> str:
     return valor.strftime("%d/%m/%Y %H:%M") if valor else ""
 
 
+class IdConverter(IntegerConverter):
+    """`<id:...>` nas rotas: inteiro que cabe numa chave do SQLite; acima disso, 404."""
+
+    def __init__(self, mapa):
+        super().__init__(mapa, max=2**63 - 1)
+
+
 # --- Fábrica ---------------------------------------------------------------
 
 def create_app(config: dict | None = None) -> Flask:
@@ -113,6 +125,7 @@ def create_app(config: dict | None = None) -> Flask:
         if app.config["SEED_ON_START"]:
             seed.popular_se_vazio()
 
+    app.url_map.converters["id"] = IdConverter
     app.add_template_filter(brl)
     app.add_template_filter(datahora)
     _registrar_ganchos(app)
@@ -147,7 +160,8 @@ def _registrar_ganchos(app: Flask) -> None:
             return
         esperado = session.get("_csrf", "")
         enviado = request.form.get("_csrf", "")
-        if not esperado or not hmac.compare_digest(esperado, enviado):
+        if not esperado or not hmac.compare_digest(
+                esperado.encode("utf-8"), enviado.encode("utf-8")):
             abort(400, "Sessão expirada ou formulário inválido. Recarregue a página.")
 
     @app.context_processor
@@ -298,7 +312,7 @@ def _registrar_rotas_perfil_e_pets(app: Flask) -> None:
             flash(erro, "erro")
         return render_template("pet_form.html", pet=None, form=form), (400 if form else 200)
 
-    @app.route("/pets/<int:pet_id>/editar", methods=["GET", "POST"])
+    @app.route("/pets/<id:pet_id>/editar", methods=["GET", "POST"])
     @cliente_required
     def pet_editar(pet_id):
         pet = _pet_do_cliente(pet_id)
@@ -317,7 +331,7 @@ def _registrar_rotas_perfil_e_pets(app: Flask) -> None:
             status = 400
         return render_template("pet_form.html", pet=pet, form=form), status
 
-    @app.post("/pets/<int:pet_id>/excluir")
+    @app.post("/pets/<id:pet_id>/excluir")
     @cliente_required
     def pet_excluir(pet_id):
         pet = _pet_do_cliente(pet_id)
@@ -346,7 +360,8 @@ def _contexto_agendar(form: dict) -> dict:
         "tipoLoja": TIPO_LOJA,
     }
     return dict(pets=g.usuario.pets, servicos=servicos, bairros=bairros, dados=dados,
-                form=form, formas=FORMAS_PAGAMENTO, hoje=date.today().isoformat())
+                form=form, formas=FORMAS_PAGAMENTO, hoje=date.today().isoformat(),
+                limite=(date.today() + ANTECEDENCIA_MAXIMA).isoformat())
 
 
 def _registrar_rotas_agendamento(app: Flask) -> None:
@@ -412,7 +427,7 @@ def _registrar_rotas_agendamento(app: Flask) -> None:
         return render_template("meus_agendamentos.html", ativos=ativos,
                                historico=historico, acoes=acoes)
 
-    @app.post("/agendamentos/<int:ag_id>/acao")
+    @app.post("/agendamentos/<id:ag_id>/acao")
     @login_required
     def agendamento_acao(ag_id):
         ag = db.session.get(Agendamento, ag_id)
@@ -456,6 +471,8 @@ def _registrar_rotas_prestador(app: Flask) -> None:
             dia = date.fromisoformat(request.args.get("data", ""))
         except ValueError:
             dia = date.today()
+        if not date(2000, 1, 1) <= dia <= date(2100, 12, 31):
+            dia = date.today()
         filtro = request.args.get("tipo")
         if filtro not in FILTROS_MODALIDADE:
             filtro = "todos"
@@ -474,6 +491,10 @@ def _registrar_rotas_prestador(app: Flask) -> None:
 
 # --- Gestão básica (CRUD auxiliar) -----------------------------------------
 
+PRECO_MAXIMO = 99_999.99
+DURACAO_MAXIMA = 24 * 60  # minutos
+
+
 def _texto(valor: str) -> str:
     valor = valor.strip()
     if not valor:
@@ -486,9 +507,14 @@ def _preco(valor: str) -> float:
         numero = float(valor.strip().replace(",", "."))
     except ValueError:
         raise ValueError("o preço deve ser um número, como 45,50") from None
-    if not math.isfinite(numero) or numero <= 0:
-        raise ValueError("o preço deve ser maior que zero")
-    return round(numero, 2)
+    if not math.isfinite(numero):
+        raise ValueError("o preço deve ser um número, como 45,50")
+    numero = round(numero, 2)
+    if numero <= 0:
+        raise ValueError("o preço deve ser de ao menos R$ 0,01")
+    if numero > PRECO_MAXIMO:
+        raise ValueError("o preço deve ser de no máximo R$ 99.999,99")
+    return numero
 
 
 def _minutos(valor: str) -> int:
@@ -496,8 +522,8 @@ def _minutos(valor: str) -> int:
         numero = int(valor.strip())
     except ValueError:
         raise ValueError("a duração deve ser um número inteiro de minutos") from None
-    if numero <= 0:
-        raise ValueError("a duração deve ser maior que zero")
+    if not 0 < numero <= DURACAO_MAXIMA:
+        raise ValueError(f"a duração deve ficar entre 1 e {DURACAO_MAXIMA} minutos")
     return numero
 
 
@@ -587,7 +613,7 @@ def _registrar_rotas_gestao(app: Flask) -> None:
         flash(f"Novo {config['singular']} cadastrado.", "sucesso")
         return voltar(recurso)
 
-    @app.post("/gestao/<recurso>/<int:registro_id>/editar")
+    @app.post("/gestao/<recurso>/<id:registro_id>/editar")
     @prestador_required
     def gestao_editar(recurso, registro_id):
         config = _gestao_config(recurso)
@@ -603,7 +629,7 @@ def _registrar_rotas_gestao(app: Flask) -> None:
         flash("Alterações salvas.", "sucesso")
         return voltar(recurso)
 
-    @app.post("/gestao/<recurso>/<int:registro_id>/alternar")
+    @app.post("/gestao/<recurso>/<id:registro_id>/alternar")
     @prestador_required
     def gestao_alternar(recurso, registro_id):
         config = _gestao_config(recurso)
@@ -616,7 +642,7 @@ def _registrar_rotas_gestao(app: Flask) -> None:
         flash(f"{config['singular'].capitalize()} {estado}.", "sucesso")
         return voltar(recurso)
 
-    @app.post("/gestao/<recurso>/<int:registro_id>/excluir")
+    @app.post("/gestao/<recurso>/<id:registro_id>/excluir")
     @prestador_required
     def gestao_excluir(recurso, registro_id):
         config = _gestao_config(recurso)
@@ -675,14 +701,28 @@ def escolher_porta(host: str, candidatas: list[int]) -> int:
         return sonda.getsockname()[1]
 
 
-def main() -> None:
-    app = create_app()
-    candidatas = portas_candidatas(os.environ)
+def porta_do_servidor(ambiente) -> int:
+    """Porta em que o servidor vai subir, registrada em `ambiente`.
+
+    Com FLASK_DEBUG=1 o Flask reexecuta o programa num processo filho enquanto o
+    pai já segura a porta; o filho reusa a escolha do pai em vez de sondar de novo
+    (e concluir, errado, que a porta está bloqueada).
+    """
+    if ambiente.get("WERKZEUG_RUN_MAIN") == "true" and ambiente.get("PETMOVEL_PORTA"):
+        return int(ambiente["PETMOVEL_PORTA"])
+    candidatas = portas_candidatas(ambiente)
     porta = escolher_porta(HOST, candidatas)
     if porta != candidatas[0]:
         print(f" * A porta {candidatas[0]} está bloqueada ou em uso neste computador; "
               f"usando a porta {porta}.")
     print(f" * PetMóvel Itajubá: abra http://{HOST}:{porta} no navegador")
+    ambiente["PETMOVEL_PORTA"] = str(porta)
+    return porta
+
+
+def main() -> None:
+    app = create_app()
+    porta = porta_do_servidor(os.environ)
     app.run(host=HOST, port=porta, debug=os.environ.get("FLASK_DEBUG") == "1")
 
 

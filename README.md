@@ -29,7 +29,8 @@ git clone https://github.com/LucasPivoto/PetShop.git
 cd PetShop
 ```
 
-Opcional, mas recomendado — ambiente virtual:
+Crie um ambiente virtual (recomendado; em distribuições Linux recentes é
+necessário, porque o `pip` do sistema recusa instalações globais):
 
 ```bash
 python -m venv .venv
@@ -158,12 +159,16 @@ mesmo que a requisição seja forjada.
 - **Preço:** `preço base × multiplicador do porte` — Pequeno 1,0 · Médio 1,25 ·
   Grande 1,5 — somado sobre os serviços escolhidos. O navegador mostra o total em
   tempo real e o servidor sempre o recalcula, ignorando qualquer valor enviado.
+  A conta é feita em centavos inteiros (meio centavo arredonda para cima) nos dois
+  lados, para a tela e o banco nunca divergirem.
 - **Horários:** slots de hora cheia, das 08:00 às 17:00. Cada slot comporta tantos
   atendimentos ativos (Pendente, Confirmado, Em Deslocamento, Em Atendimento)
   quantos recursos ativos da modalidade existirem — 1 van e 2 baias no seed. A
   janela de conflito é de 1 hora, independentemente da duração dos serviços.
 - **Cobertura:** o bairro do atendimento em domicílio precisa estar ativo, o que é
   verificado ao agendar e novamente ao confirmar.
+- **Antecedência:** o agendamento precisa ser para um horário futuro, com no máximo
+  um ano de antecedência.
 
 ## 7. Testes
 
@@ -171,8 +176,11 @@ mesmo que a requisição seja forjada.
 pytest -q
 ```
 
-A suíte cobre o cálculo de preço, a disponibilidade, todas as combinações de
-status e ação da máquina de estados, as permissões por perfil, o seed e as rotas.
+A suíte cobre o cálculo de preço (inclusive a igualdade entre o valor mostrado na
+tela e o gravado pelo servidor), a disponibilidade, a matriz de status × ação da
+máquina de estados, as permissões por perfil, o seed, as rotas e entradas inválidas
+ou maliciosas. Um dos testes compara o cálculo do JavaScript com o do Python e só
+roda se houver Node.js instalado; sem ele, é pulado.
 
 Para **zerar os dados** e voltar ao estado inicial, apague o arquivo `petshop.db` e
 rode `python app.py` de novo. Os agendamentos de exemplo são criados com datas
