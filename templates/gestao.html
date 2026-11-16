@@ -36,7 +36,7 @@
   {# --- Novo registro --- #}
   <section class="cartao mt-6 border-marca-200">
     <h2 class="font-extrabold text-stone-900">Cadastrar {{ config.singular }}</h2>
-    <form method="post" action="/gestao/{{ aba }}/novo" class="mt-4 grid gap-3 sm:grid-cols-4">
+    <form method="post" action="/gestao/{{ aba }}/novo" class="mt-4 grid gap-3 sm:grid-cols-4 lg:grid-cols-6">
       {{ csrf_field() }}
       {% for nome, rotulo, _ in config.campos %}
         {{ entrada(nome, rotulo) }}
@@ -55,7 +55,7 @@
     <h2 class="font-extrabold text-stone-900">{{ config.titulo }} cadastrados ({{ registros|length }})</h2>
     {% for registro in registros %}
       <div class="cartao flex flex-col gap-3 lg:flex-row lg:items-end {{ 'opacity-70' if tem_ativo and not registro.ativo }}">
-        <form method="post" action="/gestao/{{ aba }}/{{ registro.id }}/editar" class="grid flex-1 gap-3 sm:grid-cols-4">
+        <form method="post" action="/gestao/{{ aba }}/{{ registro.id }}/editar" class="grid flex-1 gap-3 sm:grid-cols-4 lg:grid-cols-6">
           {{ csrf_field() }}
           {% for nome, rotulo, _ in config.campos %}
             {{ entrada(nome, rotulo, valor_campo(registro, nome), 'r' ~ registro.id) }}

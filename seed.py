@@ -54,10 +54,10 @@ def popular(agora: datetime | None = None) -> None:
     _usuario("Equipe PetMóvel", "admin@petmovel.com", PERFIL_PRESTADOR, "(35) 3622-1000")
     carlos = _usuario(
         "Carlos Cliente", "cliente@teste.com", PERFIL_CLIENTE, "(35) 99876-5432",
-        "Rua Coronel Rennó, 120 — BPS, Itajubá-MG", "BPS")
+        "Rua Coronel Rennó, 120, Itajubá-MG", "BPS")
     maria = _usuario(
         "Maria Souza", "maria@teste.com", PERFIL_CLIENTE, "(35) 99123-4567",
-        "Praça Theodomiro Santiago, 45 — Centro, Itajubá-MG", "Centro")
+        "Praça Theodomiro Santiago, 45, Itajubá-MG", "Centro")
     db.session.flush()
 
     thor = Pet(cliente_id=carlos.id, nome="Thor", especie="Cão", porte="Grande",

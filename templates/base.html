@@ -44,7 +44,13 @@
   <header class="sticky top-0 z-30 border-b border-stone-200 bg-white/95 backdrop-blur">
     <nav class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 px-4 py-3">
       <a href="/" class="flex items-center gap-2">
-        <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-marca-600 text-lg text-white" aria-hidden="true">🐾</span>
+        <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-marca-600 text-white" aria-hidden="true">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+            <ellipse cx="5.5" cy="10.5" rx="2" ry="2.6"/><ellipse cx="9.8" cy="6" rx="2" ry="2.6"/>
+            <ellipse cx="14.2" cy="6" rx="2" ry="2.6"/><ellipse cx="18.5" cy="10.5" rx="2" ry="2.6"/>
+            <path d="M12 11.2c-2.7 0-5.3 3-5.3 5.5 0 1.6 1.2 2.6 2.7 2.6 1 0 1.8-.5 2.6-.5s1.6.5 2.6.5c1.5 0 2.7-1 2.7-2.6 0-2.5-2.6-5.5-5.3-5.5z"/>
+          </svg>
+        </span>
         <span class="text-lg font-black tracking-tight text-stone-900">PetMóvel <span class="text-marca-600">Itajubá</span></span>
       </a>
 
@@ -93,7 +99,7 @@
   </header>
 
   {# Mensagens flash exibidas como toasts #}
-  <div id="toasts" class="pointer-events-none fixed inset-x-0 top-20 z-40 mx-auto flex max-w-md flex-col gap-2 px-4" aria-live="polite">
+  <div id="toasts" class="pointer-events-none fixed inset-x-0 bottom-4 z-40 mx-auto flex max-w-md flex-col gap-2 px-4 sm:bottom-auto sm:top-20" aria-live="polite">
     {% for categoria, mensagem in get_flashed_messages(with_categories=true) %}
       {% set cores = {
         'sucesso': 'border-emerald-200 bg-emerald-50 text-emerald-900',
