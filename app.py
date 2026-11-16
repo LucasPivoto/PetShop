@@ -3,6 +3,7 @@ import os
 
 from flask import Flask
 
+import seed
 from models import db
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,6 +23,8 @@ def create_app(config: dict | None = None) -> Flask:
     db.init_app(app)
     with app.app_context():
         db.create_all()
+        if app.config["SEED_ON_START"]:
+            seed.popular_se_vazio()
 
     return app
 
