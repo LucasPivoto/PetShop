@@ -1,6 +1,6 @@
 # PetMóvel Itajubá — Sistema de Gestão e Agendamento Híbrido
 
-**Autor:** Lucas Pires Pivoto — **Matrícula:** [INSIRA SUA MATRÍCULA]
+**Autor:** Lucas Pires Pivoto — **Matrícula:** 2024014435
 **Disciplina:** ECOT11A – Laboratório de Engenharia de Software I (UNIFEI)
 **Entrega 2:** MVP testável via repositório GitHub
 
